@@ -8,14 +8,22 @@
 
 #import "SwipeItemView.h"
 
+@interface SwipeItemView()
+
+@end
+
 @implementation SwipeItemView
 
-- (instancetype)initWithFrame:(CGRect)frame {
+- (instancetype)initWithFrame:(CGRect)frame index:(NSInteger)index{
     self = [super initWithFrame:frame];
     if (self) {
+        self.index = index;
         [[NSBundle mainBundle] loadNibNamed:@"SwipeItemView" owner:self options:nil];
         self.contentView.frame = self.bounds;
         [self addSubview:self.contentView];
+        self.contentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self.testBtn setTitle:@(index).stringValue forState:UIControlStateNormal];
+        [self setVisiable:NO];
     }
     return self;
 }
@@ -27,6 +35,8 @@
         [[NSBundle mainBundle] loadNibNamed:@"SwipeItemView" owner:self options:nil];
         self.contentView.frame = self.bounds;
         [self addSubview:self.contentView];
+        self.contentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self setVisiable:NO];
     }
     return self;
 }
@@ -47,6 +57,21 @@
 
 - (BOOL)enableSwipe {
     return YES;
+}
+
+- (void)setVisiable:(BOOL)isVisiable {
+    [self.edageView setHidden:!isVisiable];
+}
+
+- (void)setVisiable:(BOOL)isVisiable translate:(CGFloat)translate {
+    
+    if (fabs(translate) > 50) {
+        [self setVisiable:isVisiable];
+    }
+    if (fabs(translate) == 0) {
+        [self setVisiable:isVisiable];
+    }
+    self.edageView.transform = CGAffineTransformMakeTranslation(-translate*2, 0);
 }
 
 @end

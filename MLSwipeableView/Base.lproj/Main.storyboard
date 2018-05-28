@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13771" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="14109" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
     <device id="retina4_7" orientation="portrait">
         <adaptation id="fullscreen"/>
     </device>
     <dependencies>
         <deployment identifier="iOS"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13772"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="14088"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
@@ -18,9 +18,10 @@
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="wHp-xp-DiT" customClass="MLSwipeableView">
-                                <rect key="frame" x="0.0" y="53" width="375" height="458"/>
-                                <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                            <view contentMode="scaleToFill" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="wHp-xp-DiT" customClass="MLSwipeableFitView">
+                                <rect key="frame" x="0.0" y="48" width="375" height="469"/>
+                                <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMaxY="YES"/>
+                                <color key="backgroundColor" white="0.66666666666666663" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                             </view>
                             <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="hf3-uW-nui">
                                 <rect key="frame" x="61" y="547" width="100" height="100"/>
@@ -47,12 +48,8 @@
                         </subviews>
                         <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
-                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="bottom" secondItem="wHp-xp-DiT" secondAttribute="bottom" constant="156" id="FGA-ob-n0u"/>
                             <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="s75-g1-CzM" secondAttribute="trailing" constant="54" id="Onq-z1-aUt"/>
                             <constraint firstItem="6Tk-OE-BBY" firstAttribute="bottom" secondItem="hf3-uW-nui" secondAttribute="bottom" constant="20" id="YiM-E4-K55"/>
-                            <constraint firstItem="wHp-xp-DiT" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" id="bxL-kt-bnj"/>
-                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="wHp-xp-DiT" secondAttribute="trailing" id="ede-GE-Cmd"/>
-                            <constraint firstItem="wHp-xp-DiT" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="33" id="fC6-0U-awf"/>
                             <constraint firstItem="6Tk-OE-BBY" firstAttribute="bottom" secondItem="s75-g1-CzM" secondAttribute="bottom" constant="20" id="fvW-8Z-v7b"/>
                             <constraint firstItem="hf3-uW-nui" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="61" id="yV8-uv-9Br"/>
                         </constraints>

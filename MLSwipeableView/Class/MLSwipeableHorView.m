@@ -1,81 +1,19 @@
 //
-//  MLSwipeableView.m
-//  MLSwipeableViewDemo
+//  MLSwipeableHorView.m
+//  MLSwipeableHorViewDemo
 //
 //  Created by Mrlu on 05/03/2018.
 //  Copyright (c) 2018 Mrlu. All rights reserved.
 //
 
-#import "MLSwipeableView.h"
-
-CGPoint MLCGPointAdd(const CGPoint a, const CGPoint b) {
-    return CGPointMake(a.x + b.x,
-                       a.y + b.y);
-}
-
-CGPoint MLCGPointSubtract(const CGPoint minuend, const CGPoint subtrahend) {
-    return CGPointMake(minuend.x - subtrahend.x,
-                       minuend.y - subtrahend.y);
-}
-
-CGFloat MDCDegreesToRadians(const CGFloat degrees) {
-    return degrees * (M_PI/180.0);
-}
-
-CGRect MLCGRectExtendedOutOfBounds(const CGRect rect,
-                                    const CGRect bounds,
-                                    const CGPoint translation,
-                                    const NSUInteger direction) {
-    CGRect destination = rect;
-    while (!CGRectIsNull(CGRectIntersection(bounds, destination))) {
-        if (direction>=2) { //XY轴
-            destination = CGRectMake(CGRectGetMinX(destination) + translation.x,
-                                     CGRectGetMinY(destination) + translation.y,
-                                     CGRectGetWidth(destination),
-                                     CGRectGetHeight(destination));
-        }
-        if (direction==0) { //X轴
-            destination = CGRectMake(CGRectGetMinX(destination) + translation.x,
-                                     CGRectGetMinY(destination),
-                                     CGRectGetWidth(destination),
-                                     CGRectGetHeight(destination));
-        }
-        if (direction==1) { //Y轴
-            destination = CGRectMake(CGRectGetMinX(destination),
-                                     CGRectGetMinY(destination) + translation.y,
-                                     CGRectGetWidth(destination),
-                                     CGRectGetHeight(destination));
-        }
-    }
-    
-    return destination;
-}
-
-typedef CGFloat MLRotationDirection;
-const MLRotationDirection MLRotationAwayFromCenter = 1.f;
-const MLRotationDirection MLRotationTowardsCenter = -1.f;
+#import "MLSwipeableHorView.h"
 
 static const int numPrefetchedViews = 3;
 
-@implementation MLPanState
-
-@end
-
-
-@implementation MLSwipeResult
-
-@end
-
-
-@interface MLSwipeableView ()
+@interface MLSwipeableHorView ()
 
 // ContainerView
 @property (nonatomic, strong, readwrite) UIView *containerView;
-/*!
- * The center of the view when the pan gesture began.
- */
-@property (nonatomic, assign) CGPoint originalCenter;
-@property (nonatomic, assign) CATransform3D originalTransform;
 
 /*!
  * When the pan gesture originates at the top half of the view, the view rotates
@@ -90,9 +28,11 @@ static const int numPrefetchedViews = 3;
 @property (nonatomic, strong) NSMutableArray *cellConstains;
 @property (nonatomic, assign) NSUInteger count;
 @property (nonatomic, strong, readwrite) UIPanGestureRecognizer *panGestureRecognizer;
+@property (nonatomic, strong) NSMutableArray<SwipeItemTransform *> *swipeItemTransforms;
+
 @end
 
-@implementation MLSwipeableView
+@implementation MLSwipeableHorView
 
 #pragma mark - Init
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -111,7 +51,7 @@ static const int numPrefetchedViews = 3;
 
 -(void)setup {
     self.index = -1;
-    self.count = 0;
+    self.normalOffset = 20;
     self.swipeClosedAnimationDuration = 0.25;
     self.swipeClosedAnimationOptions = UIViewAnimationOptionCurveLinear;
     self.swipeCancelledAnimationDuration = 0.6;
@@ -134,7 +74,8 @@ static const int numPrefetchedViews = 3;
 
     self.swipeableViewsCenter = CGPointMake(self.bounds.size.width/2, self.bounds.size.height/2);
     
-    self.cellConstains = [NSMutableArray array];
+    self.cellConstains = [NSMutableArray<SwipeableViewProtocol> array];
+    self.swipeItemTransforms = [NSMutableArray<SwipeItemTransform *> arrayWithObjects:[SwipeItemTransform new],[SwipeItemTransform new],[SwipeItemTransform new], nil];
     
     [self setupPanGestureRecognizer];
 }
@@ -163,10 +104,22 @@ static const int numPrefetchedViews = 3;
 }
 
 - (void)didMoveToSuperview {
-    [self reloadData];
+    [super didMoveToSuperview];
 }
 
 #pragma mark - Properties
+- (NSInteger)itemsCount {
+    if (self.dataSource && [self.dataSource respondsToSelector:@selector(numberItemForSwipeableView:)]) {
+        return [self.dataSource numberItemForSwipeableView:self];
+    }
+    return 0;
+}
+
+
+#pragma mark - Internal Helpers
+- (NSInteger)indexOf:(NSInteger)express {
+    return (self.itemsCount + (self.index + express)) % self.itemsCount;
+}
 
 #pragma mark - DataSource
 - (void)discardAllSwipeableViews {
@@ -185,8 +138,10 @@ static const int numPrefetchedViews = 3;
 }
 
 - (void)reloadData:(BOOL)animated layout:(BOOL)layout {
-    self.index = -1;
-    self.count = 0;
+    if (self.dataSource == nil) { return; }
+    
+    self.index = 0;
+        
     [self loadNextSwipeableViewsIfNeeded:animated layout:layout];
 }
 
@@ -204,22 +159,41 @@ static const int numPrefetchedViews = 3;
     if (numViews == numPrefetchedViews) {
         return;
     }
-    for (NSInteger i=numViews; i<numPrefetchedViews; i++) {
-        UIView *nextView = [self nextSwipeableView:self.count];
-        if (nextView) {
-            self.count++;
+    if (numViews < numPrefetchedViews) {
+        UIView<SwipeableViewProtocol> *nextView = [self nextSwipeableView:[self indexOf:1]];
+        UIView<SwipeableViewProtocol> *currentView = [self nextSwipeableView:self.index];
+        UIView<SwipeableViewProtocol> *frontView = [self nextSwipeableView:[self indexOf:-1]];
+        if (frontView && frontView.superview == nil) {
+            [self.containerView addSubview:frontView];
+            [self.containerView sendSubviewToBack:frontView];
+            [self.cellConstains addObject:frontView];
+            // 下一张的布局
+            frontView.center = CGPointMake(self.swipeableViewsCenter.x - self.normalSize.width - self.normalOffset, self.swipeableViewsCenter.y);
+            frontView.transform = CGAffineTransformMakeScale(0.95, 0.95);
+            frontView.originalHeight = frontView.frame.size.height;
+            [newViews addObject:frontView];
+        }
+        if (currentView && currentView.superview == nil) {
+            [self.containerView addSubview:currentView];
+            [self.containerView bringSubviewToFront:currentView];
+            [self.cellConstains addObject:currentView];
+            
+            // 下一张的布局
+            currentView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y);
+            currentView.originalHeight = currentView.frame.size.height;
+
+            [newViews addObject:currentView];
+        }
+        if (nextView && nextView.superview == nil) {
             [self.containerView addSubview:nextView];
             [self.containerView sendSubviewToBack:nextView];
-            [self.cellConstains insertObject:nextView atIndex:0];
+            [self.cellConstains addObject:nextView];
             // 下一张的布局
-            nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y+CGRectGetHeight(nextView.frame)/2.*0.05+10);
+            nextView.center = CGPointMake(self.swipeableViewsCenter.x + self.normalSize.width + self.normalOffset, self.swipeableViewsCenter.y);
             nextView.transform = CGAffineTransformMakeScale(0.95, 0.95);
+            nextView.originalHeight = nextView.frame.size.height;
             [newViews addObject:nextView];
         }
-    }
-    for (int i = 0; i < self.cellConstains.count; i++) {
-        UIView *av = [self.cellConstains objectAtIndex:i];
-        av.tag = i;
     }
     if (layout) {
         if (animated) {
@@ -265,23 +239,22 @@ static const int numPrefetchedViews = 3;
         if (enableDelegate && [self.delegate respondsToSelector:@selector(swipeableView:willDisplay:)]) {
             [self.delegate swipeableView:self willDisplay:topSwipeableView];
         }
-        topSwipeableView.center = self.swipeableViewsCenter;
-        topSwipeableView.transform = CGAffineTransformIdentity;
+//        topSwipeableView.center = self.swipeableViewsCenter;
+//        topSwipeableView.transform = CGAffineTransformIdentity;
         if (enableDelegate && [self.delegate respondsToSelector:@selector(swipeableView:didDisplay:)]) {
-            self.index++;
             [self.delegate swipeableView:self didDisplay:topSwipeableView];
         }
     }
     
     if (self.isRotationEnabled) {
-        // rotation
-        CGPoint rotationCenterOffset = {0,CGRectGetHeight(topSwipeableView.frame)*self.rotationRelativeYOffsetFromCenter};
-        if (numSwipeableViews>=2) {
-            [self rotateView:self.cellConstains[numSwipeableViews-2] forDegree:self.rotationFactor atOffsetFromCenter:rotationCenterOffset animated:YES];
-        }
-        if (numSwipeableViews>=3) {
-            [self rotateView:self.cellConstains[numSwipeableViews-3] forDegree:-self.rotationFactor atOffsetFromCenter:rotationCenterOffset animated:YES];
-        }
+//        // rotation
+//        CGPoint rotationCenterOffset = {0,CGRectGetHeight(topSwipeableView.frame)*self.rotationRelativeYOffsetFromCenter};
+//        if (numSwipeableViews>=2) {
+//            [self rotateView:self.cellConstains[numSwipeableViews-2] forDegree:self.rotationFactor atOffsetFromCenter:rotationCenterOffset animated:YES];
+//        }
+//        if (numSwipeableViews>=3) {
+//            [self rotateView:self.cellConstains[numSwipeableViews-3] forDegree:-self.rotationFactor atOffsetFromCenter:rotationCenterOffset animated:YES];
+//        }
     }
 }
 
@@ -303,22 +276,31 @@ static const int numPrefetchedViews = 3;
         ratio = 1;
     }
     
-    UIView *nextView = [self getNextSwipeableView:swipeableView];
-    if (nextView) {
-        nextView.transform = CGAffineTransformMakeScale(0.95+0.05*ratio, 0.95+0.05*ratio);
-        nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y+(CGRectGetHeight(nextView.frame)/2.*0.05+10)*(1-ratio));
-    }
+//    UIView *nextView = [self getNextSwipeableView:swipeableView];
+//    if (nextView) {
+//        nextView.transform = CGAffineTransformMakeScale(0.95+0.05*ratio, 0.95+0.05*ratio);
+//        nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y+(CGRectGetHeight(nextView.frame)/2.*0.05+10)*(1-ratio));
+//    }
     
-    UIView *view = [self topSwipeableView];
-    CGPoint translation = [recognizer translationInView:view];
+    UIView<SwipeableViewProtocol> *currentView = [self topSwipeableView];
+    UIView<SwipeableViewProtocol> *nextView = [self lastSwipeableView];
+    UIView<SwipeableViewProtocol> *frontView = [self frontSwipeableView];
+    CGPoint translation = [recognizer translationInView:currentView];
     
     if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.originalCenter = view.center;
-        self.originalTransform = view.layer.transform;
+        currentView.originalCenter = currentView.center;
+        currentView.originalTransform = currentView.transform;
+        [self.swipeItemTransforms replaceObjectAtIndex:1 withObject:[[SwipeItemTransform alloc] initWithSwipeProtocol:currentView]];
+        nextView.originalCenter = nextView.center;
+        nextView.originalTransform = nextView.transform;
+        [self.swipeItemTransforms replaceObjectAtIndex:2 withObject:[[SwipeItemTransform alloc] initWithSwipeProtocol:nextView]];
+        frontView.originalCenter = frontView.center;
+        frontView.originalTransform = frontView.transform;
+        [self.swipeItemTransforms replaceObjectAtIndex:0 withObject:[[SwipeItemTransform alloc] initWithSwipeProtocol:frontView]];
         
         // If the pan gesture originated at the top half of the view, rotate the view
         // away from the center. Otherwise, rotate towards the center.
-        if ([recognizer locationInView:view].y < view.center.y) {
+        if ([recognizer locationInView:currentView].y < currentView.center.y) {
             self.rotationDirection = MLRotationAwayFromCenter;
         } else {
             self.rotationDirection = MLRotationTowardsCenter;
@@ -330,14 +312,19 @@ static const int numPrefetchedViews = 3;
         CGPoint velocity = [recognizer velocityInView:self];
         CGFloat velocityMagnitude = sqrt(pow(velocity.x,2)+pow(velocity.y,2));
 //        CGPoint normalizedVelocity = CGPointMake(velocity.x/velocityMagnitude, velocity.y/velocityMagnitude);
-        [self mdc_finalizePosition:(UIView *)view velocity:velocityMagnitude];
+        [self mdc_finalizePosition:frontView velocity:velocityMagnitude];
+        [self mdc_finalizePosition:currentView velocity:velocityMagnitude];
+        [self mdc_finalizePosition:nextView velocity:velocityMagnitude];
     } else {
         // Update the position and transform. Then, notify any listeners of
         // the updates via the pan block.
-        view.center = MLCGPointAdd(self.originalCenter, translation);
-        [self mdc_rotateForTranslation:translation
-                     rotationDirection:self.rotationDirection view:view];
-        [self mdc_executeOnPanBlockForTranslation:translation view:view isAuto:NO];
+        currentView.center = MLCGPointAddX(currentView.originalCenter, translation, currentView.center.y);
+        nextView.center = MLCGPointAddX(nextView.originalCenter, translation, nextView.center.y);
+        frontView.center = MLCGPointAddX(frontView.originalCenter, translation, frontView.center.y);
+//        [self mdc_rotateForTranslation:translation rotationDirection:self.rotationDirection view:view];
+//        [self mdc_TranslationHeight:translation view:currentView];
+        [self mdc_Translation:translation view:currentView];
+        [self mdc_executeOnPanBlockForTranslation:translation view:currentView isAuto:NO];
     }
 }
 
@@ -383,30 +370,25 @@ static const int numPrefetchedViews = 3;
     return radians * 180 / M_PI;
 };
 
-- (UIView *)nextSwipeableView:(NSInteger)index {
+- (UIView<SwipeableViewProtocol> *)nextSwipeableView:(NSInteger)index {
     UIView<SwipeableViewProtocol> *nextView = nil;
-    if (self.dataSource && [self.dataSource respondsToSelector:@selector(nextViewForSwipeableView:index:)]) {
+    nextView = [self viewForIndex:index];
+    if (nextView == nil && self.dataSource && [self.dataSource respondsToSelector:@selector(nextViewForSwipeableView:index:)]) {
         nextView = [self.dataSource nextViewForSwipeableView:self index:index];
+        nextView.tag = index;
     }
     return nextView;
 }
 
-- (UIView *)getNextSwipeableView:(UIView *)swipeableView {
-    UIView *nextView = nil;
-    for (UIView *av in self.cellConstains) {
-        if (self.containerView.subviews.count > 2) {
-            if (av.tag == 1) {
-                nextView = av;
-                break;
-            }
-        } else {
-            if (av != swipeableView) {
-                nextView = av;
-                break;
-            }
+- (UIView<SwipeableViewProtocol> *)viewForIndex:(NSInteger)index {
+    UIView<SwipeableViewProtocol> *item = nil;
+    for (UIView<SwipeableViewProtocol> *view in self.cellConstains) {
+        if ( view.tag == index ) {
+            item = view;
+            break;
         }
     }
-    return nextView;
+    return item;
 }
 
 - (void)rotateView:(UIView*)view forDegree:(float)degree atOffsetFromCenter:(CGPoint)offset animated:(BOOL)animated {
@@ -425,23 +407,27 @@ static const int numPrefetchedViews = 3;
 }
 
 - (UIView<SwipeableViewProtocol> *)topSwipeableView {
-    return self.cellConstains.lastObject;
+    return [self viewForIndex:self.index];
 }
 
 - (UIView<SwipeableViewProtocol> *)lastSwipeableView {
-    return self.cellConstains.firstObject;
+    return [self viewForIndex:[self indexOf:1]];
+}
+
+- (UIView<SwipeableViewProtocol> *)frontSwipeableView {
+    return [self viewForIndex:[self indexOf:-1]];
 }
 
 #pragma mark - Internal Helpers
 
-- (void)mdc_swipe:(MLSwipeDirection)direction view:(UIView *)view {
+- (void)mdc_swipe:(MLSwipeDirection)direction view:(UIView<SwipeableViewProtocol> *)view {
     // A swipe in no particular direction "finalizes" the swipe.
     if (direction == MLSwipeDirectionNone) {
         [self mdc_finalizePosition:view];
         return;
     }
-    self.originalCenter = view.center;
-    self.originalTransform = view.layer.transform;
+    view.originalCenter = view.center;
+    view.originalTransform = view.transform;
     
     /*
     // Moves the view to the minimum point exceeding the threshold.
@@ -470,33 +456,32 @@ static const int numPrefetchedViews = 3;
     CGPoint point = view.center;
     point.x += (direction == MLSwipeDirectionLeft?-10:10);
     CGPoint translation = MLCGPointSubtract(point,
-                                            self.originalCenter);
+                                            view.originalCenter);
     self.panGestureRecognizer.enabled = NO;
     [self mdc_exitSuperviewFromTranslation:translation view:view direction:direction isAuto:YES animation:^{
         CGPoint translation = [self mdc_translationExceedingThreshold:self.threshold
                                                             direction:direction view:view];
         [self mdc_executeOnPanBlockForTranslation:translation view:view isAuto:YES];
-        [self mdc_rotateForTranslation:translation
-                     rotationDirection:MLRotationAwayFromCenter view:view rotationFactor:5];
+//        [self mdc_rotateForTranslation:translation rotationDirection:MLRotationAwayFromCenter view:view rotationFactor:5];
     }];
 }
 
 #pragma mark Translation
-- (void)mdc_finalizePosition:(UIView *)view {
+- (void)mdc_finalizePosition:(UIView<SwipeableViewProtocol> *)view {
     [self mdc_finalizePosition:view velocity:0];
 }
 
-- (void)mdc_finalizePosition:(UIView *)view velocity:(CGFloat)velocity {
+- (void)mdc_finalizePosition:(UIView<SwipeableViewProtocol> *)view velocity:(CGFloat)velocity {
     MLSwipeDirection direction = [self mdc_directionOfExceededThreshold:view velocity:velocity];
     [self mdc_finalizePosition:view velocity:velocity direction:direction];
 }
 
-- (void)mdc_finalizePosition:(UIView *)view velocity:(CGFloat)velocity direction:(MLSwipeDirection)direction  {
+- (void)mdc_finalizePosition:(UIView<SwipeableViewProtocol> *)view velocity:(CGFloat)velocity direction:(MLSwipeDirection)direction  {
     switch (direction) {
         case MLSwipeDirectionRight:
         case MLSwipeDirectionLeft: {
             CGPoint translation = MLCGPointSubtract(view.center,
-                                                     self.originalCenter);
+                                                     view.originalCenter);
             [self mdc_exitSuperviewFromTranslation:translation view:view direction:direction];
             break;
         }
@@ -507,12 +492,12 @@ static const int numPrefetchedViews = 3;
     }
 }
 
-- (void)mdc_returnToOriginalCenter:(UIView *)view {
-    UIView *nextView = [self getNextSwipeableView:view];
-    [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionAllowUserInteraction animations:^{
-        nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y+CGRectGetHeight(nextView.frame)/2.*0.05+10);
-        nextView.transform = CGAffineTransformMakeScale(0.95, 0.95);
-    } completion:nil];
+- (void)mdc_returnToOriginalCenter:(UIView<SwipeableViewProtocol> *)view {
+//    UIView *nextView = [self getNextSwipeableView:view];
+//    [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionAllowUserInteraction animations:^{
+//        nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y+CGRectGetHeight(nextView.frame)/2.*0.05+10);
+//        nextView.transform = CGAffineTransformMakeScale(0.95, 0.95);
+//    } completion:nil];
     if (self.delegate && [self.delegate respondsToSelector:@selector(swipeableViewWillEndSwipe:swipingView:)]) {
         [self.delegate swipeableViewWillEndSwipe:self swipingView:view];
     }
@@ -522,8 +507,12 @@ static const int numPrefetchedViews = 3;
           initialSpringVelocity:self.initialSpringVelocity
                         options:self.swipeCancelledAnimationOptions | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
-                         view.layer.transform = self.originalTransform;
-                         view.center = self.originalCenter;
+                         view.transform = view.originalTransform;
+                         [self frontSwipeableView].transform = [self frontSwipeableView].originalTransform;
+                         [self lastSwipeableView].transform = [self lastSwipeableView].originalTransform;
+                         view.center = view.originalCenter;
+                         [self frontSwipeableView].center = [self frontSwipeableView].originalCenter;
+                         [self lastSwipeableView].center = [self lastSwipeableView].originalCenter;
                      } completion:^(BOOL finished) {
                          if (self.delegate && [self.delegate respondsToSelector:@selector(swipeableViewdidEndSwipe:swipingView:)]) {
                              [self.delegate swipeableViewdidEndSwipe:self swipingView:view];
@@ -531,16 +520,18 @@ static const int numPrefetchedViews = 3;
                      }];
 }
 
-- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView *)view direction:(MLSwipeDirection)direction {
+- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView<SwipeableViewProtocol> *)view direction:(MLSwipeDirection)direction {
     [self mdc_exitSuperviewFromTranslation:translation view:view direction:direction animation:nil];
 }
 
-- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView *)view direction:(MLSwipeDirection)direction animation:(void (^)(void))animations {
+- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView<SwipeableViewProtocol> *)view direction:(MLSwipeDirection)direction animation:(void (^)(void))animations {
     [self mdc_exitSuperviewFromTranslation:translation view:view direction:direction isAuto:NO animation:nil];
 }
 
-- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView *)view direction:(MLSwipeDirection)direction isAuto:(BOOL)Auto animation:(void (^)(void))animations {
-    
+- (void)mdc_exitSuperviewFromTranslation:(CGPoint)translation view:(UIView<SwipeableViewProtocol> *)view direction:(MLSwipeDirection)direction isAuto:(BOOL)Auto animation:(void (^)(void))animations {
+    if (![view isEqual:[self topSwipeableView]]) {
+        return;
+    }
     if (direction == MLSwipeDirectionLeft && [self.delegate respondsToSelector:@selector(swipeableView:willSwipeLeft:)]) {
         if (![self.delegate swipeableView:self willSwipeLeft:view]) {
             [self mdc_returnToOriginalCenter:view];
@@ -561,6 +552,9 @@ static const int numPrefetchedViews = 3;
 }
 
 - (void)mdc_executeOnPanBlockForTranslation:(CGPoint)translation view:(UIView *)view isAuto:(BOOL)isAuto {
+    if (![view isEqual:[self topSwipeableView]]) {
+        return;
+    }
     if (self.delegate && [self.delegate respondsToSelector:@selector(swipeableView:swipingView:atLocation:panState:)]) {
         CGFloat thresholdRatio = MIN(1.f, fabs(translation.x)/self.threshold);
         
@@ -586,7 +580,7 @@ static const int numPrefetchedViews = 3;
                                options:(UIViewAnimationOptions)options
                            translation:(CGPoint)translation
                              direction:(MLSwipeDirection)direction
-                                  view:(UIView *)view {
+                                  view:(UIView<SwipeableViewProtocol> *)view {
     [self exitScreenOnChosenWithDuration:duration options:options translation:translation direction:direction view:view animation:nil];
 }
 
@@ -594,47 +588,84 @@ static const int numPrefetchedViews = 3;
                                options:(UIViewAnimationOptions)options
                            translation:(CGPoint)translation
                              direction:(MLSwipeDirection)direction
-                                  view:(UIView *)view animation:(void (^)(void))animations {
-    UIView *nextView = [self getNextSwipeableView:view];
-    if (!CGAffineTransformIsIdentity(nextView.transform)) {
-        [UIView animateWithDuration:0.15 delay:0 options: UIViewAnimationOptionBeginFromCurrentState animations:^{
-            nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y);
-            nextView.transform = CGAffineTransformIdentity;
-        } completion:^(BOOL finished) {
-            
-        }];
+                                  view:(UIView<SwipeableViewProtocol> *)view animation:(void (^)(void))animations {
+    if (![view isEqual:[self topSwipeableView]]) {
+        return;
     }
-    CGRect destination = MLCGRectExtendedOutOfBounds(view.frame,
-                                                     CGRectInset(view.superview.bounds,
-                                                                  -70, 0),
-                                                      translation,
-                                                     animations?0:2);
-    [self.cellConstains removeObject:view];
+//    UIView *nextView = [self lastSwipeableView];
+//    if (!CGAffineTransformIsIdentity(nextView.transform)) {
+//        [UIView animateWithDuration:0.15 delay:0 options: UIViewAnimationOptionBeginFromCurrentState animations:^{
+//            nextView.center = CGPointMake(self.swipeableViewsCenter.x, self.swipeableViewsCenter.y);
+//            nextView.transform = CGAffineTransformIdentity;
+//        } completion:^(BOOL finished) {
+//
+//        }];
+//    }
     self.panGestureRecognizer.enabled = NO;
     [UIView animateWithDuration:duration
                           delay:0.0
                         options:options | UIViewAnimationOptionAllowUserInteraction
                      animations:^{
-                         view.center = CGPointMake(CGRectGetMidX(destination),
-                                                         CGRectGetMidY(destination));
+                         if (direction == MLSwipeDirectionLeft ) {
+                             [self frontSwipeableView].center = CGPointMake([self frontSwipeableView].center.x-100, [self frontSwipeableView].center.y);
+                             [self lastSwipeableView].center = self.swipeItemTransforms[1].originalCenter;
+                             view.center = self.swipeItemTransforms[0].originalCenter;
+                             
+                             [self lastSwipeableView].transform = self.swipeItemTransforms[1].originalTransform;
+                             view.transform = self.swipeItemTransforms[0].originalTransform;
+                         }
+                         if (direction == MLSwipeDirectionRight) {
+                             [self lastSwipeableView].center = CGPointMake([self lastSwipeableView].center.x+100, [self lastSwipeableView].center.y);
+                             [self frontSwipeableView].center = self.swipeItemTransforms[1].originalCenter;
+                             view.center = self.swipeItemTransforms[2].originalCenter;
+                             
+                             [self frontSwipeableView].transform = self.swipeItemTransforms[1].originalTransform;
+                             view.transform = self.swipeItemTransforms[2].originalTransform;
+                         }
                          if (animations) {
                              animations();
                          }
                      } completion:^(BOOL finished) {
                          if (finished) {
-                             [view removeFromSuperview];
+                             if (direction == MLSwipeDirectionLeft ) {
+                                 [[self frontSwipeableView] removeFromSuperview];
+                                 [self.cellConstains removeObject:[self frontSwipeableView]];
+                             }
+                             if (direction == MLSwipeDirectionRight) {
+                                 [[self lastSwipeableView] removeFromSuperview];
+                                 [self.cellConstains removeObject:[self lastSwipeableView]];
+                             }
                              if (direction == MLSwipeDirectionLeft && [self.delegate respondsToSelector:@selector(swipeableView:didSwipeLeft:)]) {
                                  [self.delegate swipeableView:self didSwipeLeft:view];
                              }
                              if (direction == MLSwipeDirectionRight && [self.delegate respondsToSelector:@selector(swipeableView:didSwipeRight:)]) {
                                  [self.delegate swipeableView:self didSwipeRight:view];
                              }
+                             
+                             if (direction == MLSwipeDirectionLeft ) {
+                                 self.index = [self indexOf:1];
+                             }
+                             if (direction == MLSwipeDirectionRight) {
+                                 self.index = [self indexOf:-1];
+                             }
                              [self loadNextSwipeableViewsIfNeeded:NO];
                          }
                          self.panGestureRecognizer.enabled = YES;
                      }];
 }
+#pragma mark - translate
+- (void)mdc_TranslationHeight:(CGPoint)translation view:(UIView<SwipeableViewProtocol> *)view {
+    CGFloat height = MAX(view.actualHeight-fabs(translation.x), view.originalHeight);
+    view.frame = MLCGRectAddHeight(view.frame, height);
+}
 
+- (CGRect)changeHeight:(CGFloat)height view:(UIView<SwipeableViewProtocol> *)view {
+    return MLCGRectAddHeight(view.frame, height);
+}
+
+- (void)mdc_Translation:(CGPoint)translation view:(UIView *)view {
+    view.transform = CGAffineTransformMakeScale(MAX(1 - fabs(translation.x/1000.0), 0.95), MAX(1 - fabs(translation.x/1000), 0.95));
+}
 
 #pragma mark Rotation
 - (void)mdc_rotateForTranslation:(CGPoint)translation
@@ -645,8 +676,10 @@ static const int numPrefetchedViews = 3;
 - (void)mdc_rotateForTranslation:(CGPoint)translation
                rotationDirection:(MLRotationDirection)rotationDirection view:(UIView *)view  rotationFactor:(CGFloat)rotationFactor {
     CGFloat rotation = MDCDegreesToRadians(translation.x/100 * rotationFactor);
-    view.layer.transform = CATransform3DMakeRotation(rotationDirection * rotation, 0.0, 0.0, 1.0);
+    view.transform = CGAffineTransformMakeRotation(rotationDirection * rotation);
 }
+
+#pragma mark Transform
 
 #pragma mark Threshold
 - (CGPoint)mdc_translationExceedingThreshold:(CGFloat)threshold
@@ -666,23 +699,23 @@ static const int numPrefetchedViews = 3;
     }
 }
 
-- (MLSwipeDirection)mdc_directionOfExceededThreshold:(UIView *)view{
+- (MLSwipeDirection)mdc_directionOfExceededThreshold:(UIView<SwipeableViewProtocol> *)view{
     return [self mdc_directionOfExceededThreshold:view velocity:0];
 }
 
-- (MLSwipeDirection)mdc_directionOfExceededThreshold:(UIView *)view velocity:(CGFloat)velocity{
+- (MLSwipeDirection)mdc_directionOfExceededThreshold:(UIView<SwipeableViewProtocol> *)view velocity:(CGFloat)velocity{
     if (velocity > self.escapeVelocityThreshold) {
-        if (view.center.x > self.originalCenter.x + 71) {
+        if (view.center.x > view.originalCenter.x + 71) {
             return MLSwipeDirectionRight;
-        } else if (view.center.x < self.originalCenter.x - 71) {
+        } else if (view.center.x < view.originalCenter.x - 71) {
             return MLSwipeDirectionLeft;
         } else {
             return MLSwipeDirectionNone;
         }
     } else {
-        if (view.center.x > self.originalCenter.x + self.threshold) {
+        if (view.center.x > view.originalCenter.x + self.threshold) {
             return MLSwipeDirectionRight;
-        } else if (view.center.x < self.originalCenter.x - self.threshold) {
+        } else if (view.center.x < view.originalCenter.x - self.threshold) {
             return MLSwipeDirectionLeft;
         } else {
             return MLSwipeDirectionNone;
